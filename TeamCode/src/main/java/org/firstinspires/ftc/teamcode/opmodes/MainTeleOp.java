@@ -4,6 +4,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import org.firstinspires.ftc.teamcode.Robot;
+import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
 
 /*
  * gamepad1
@@ -12,6 +13,7 @@ import org.firstinspires.ftc.teamcode.Robot;
  *   right bumper   slow mode (hold)
  *   back           toggle field-centric
  *   start          reset heading (field-centric forward = where the robot faces now)
+ *   dpad up        toggle velocity drive (steady wheel speed) vs follower drive
  */
 @TeleOp(name = "Main TeleOp", group = "BIOBUZZ")
 public class MainTeleOp extends LinearOpMode {
@@ -32,6 +34,11 @@ public class MainTeleOp extends LinearOpMode {
             }
             if (gamepad1.startWasPressed()) {
                 robot.drivetrain.resetHeading();
+            }
+            if (gamepad1.dpadUpWasPressed()) {
+                robot.drivetrain.setMode(robot.drivetrain.getMode() == Drivetrain.Mode.PEDRO
+                        ? Drivetrain.Mode.VELOCITY
+                        : Drivetrain.Mode.PEDRO);
             }
 
             robot.drivetrain.setSlowMode(gamepad1.right_bumper);
