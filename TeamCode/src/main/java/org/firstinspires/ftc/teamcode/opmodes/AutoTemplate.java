@@ -50,7 +50,8 @@ public class AutoTemplate extends OpMode {
                 step++;
                 break;
             case 1:
-                if (!follower.isBusy()) {
+                // The follower holds the end pose once the path is done.
+                if (!follower.following()) {
                     step++;
                 }
                 break;

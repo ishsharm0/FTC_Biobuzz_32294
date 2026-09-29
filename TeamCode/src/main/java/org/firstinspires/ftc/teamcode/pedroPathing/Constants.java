@@ -20,8 +20,9 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
  * Pedro Pathing 3 drivetrain + localizer + Foresight config.
  *
  * Velocities, decelerations and pod offsets carry over from the DECODE robot's 2.x tuning.
- * Everything marked UNTUNED is a placeholder: run the Tuning OpMode's Foresight Tuner
- * and paste the code it generates over foresightConfig.
+ * Everything marked UNTUNED is a placeholder: run the Foresight tuner and paste the code
+ * it generates over foresightConfig. The quadratic brake terms are v^2 / (2 * deceleration),
+ * which is close enough to stop near the target but not tuned.
  */
 public class Constants {
 
@@ -59,9 +60,9 @@ public class Constants {
         c.coast.set(Controller.proportionalFeedforward(0.0));
         c.brake.set(Controller.proportionalFeedforward(0.0));
         c.headingFeedback.set(Controller.proportional(1.0));
-        c.headingBrakeCoefficients.set(Vector2D.cartesian(0.0, 0.0));
-        c.linearBrakeCoefficients.set(Matrix.diag(0.0, 0.0));
-        c.quadraticBrakeCoefficients.set(Matrix.diag(0.0, 0.0));
+        c.headingBrakeCoefficients.set(Vector2D.cartesian(0.1, 0.0));
+        c.linearBrakeCoefficients.set(Matrix.diag(0.05, 0.05));
+        c.quadraticBrakeCoefficients.set(Matrix.diag(1 / (2 * 34.5977), 1 / (2 * 56.0205)));
     });
 
     public static Mecanum createDrivetrain(HardwareMap hardwareMap) {

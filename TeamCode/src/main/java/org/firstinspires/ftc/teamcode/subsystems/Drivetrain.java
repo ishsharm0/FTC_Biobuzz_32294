@@ -4,6 +4,7 @@ import com.pedropathing.drivetrain.DrivePowers;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.follower.ManualDrive;
 import com.pedropathing.math.Pose;
+import com.pedropathing.revhub.drivetrains.Mecanum;
 import com.pedropathing.revhub.drivetrains.MecanumConfig;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -47,6 +48,7 @@ public class Drivetrain implements Subsystem {
     public static double TURN_SLEW_PER_SEC = 7.0;
 
     public final Follower follower;
+    private final Mecanum mecanum;
 
     private final DcMotorEx leftFront, leftRear, rightFront, rightRear;
     private final List<DcMotorEx> motors;
@@ -59,7 +61,9 @@ public class Drivetrain implements Subsystem {
     private double lastForward = 0.0, lastStrafe = 0.0, lastTurn = 0.0;
 
     public Drivetrain(HardwareMap hardwareMap) {
-        follower = Constants.createFollower(hardwareMap);
+        // Keep the Mecanum so VELOCITY mode can go through its motor cache.
+        mecanum = Constants.createDrivetrain(hardwareMap);
+        follower = new Follower(Constants.createLocalizer(hardwareMap), mecanum, Constants.createAlgorithm());
 
         MecanumConfig config = Constants.drivetrainConfig;
         leftFront = hardwareMap.get(DcMotorEx.class, config.frontLeftName.get());
@@ -81,8 +85,12 @@ public class Drivetrain implements Subsystem {
     /**
      * All inputs -1..1. Positive forward drives away from the driver,
      * positive strafe goes left, positive turn is counter-clockwise.
+     * Ignored while a driveTo() or path is running.
      */
     public void drive(double forward, double strafe, double turn) {
+        if (follower.following()) {
+            return;
+        }
         if (mode == Mode.PEDRO) {
             DrivePowers powers = new DrivePowers(forward * scale, strafe * scale, turn * scale);
             follower.manual(fieldCentric ? ManualDrive.fieldCentric(powers, follower.pose().heading()) : powers);
@@ -132,7 +140,7 @@ public class Drivetrain implements Subsystem {
 
     /** True while a driveTo() or path is still running. */
     public boolean isBusy() {
-        return follower.isBusy();
+        return follower.following();
     }
 
     public Mode getMode() {
@@ -149,10 +157,9 @@ public class Drivetrain implements Subsystem {
             // Stops the follower writing motor powers, then take the motors over.
             // update() only runs the localizer in this mode so the follower stays off them.
             follower.stop();
-            follower.drivetrain.stop();
+            mecanum.stop(true);
             for (DcMotorEx motor : motors) {
                 motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-                motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             }
             lastCommandNs = 0L;
             lastForward = lastStrafe = lastTurn = 0.0;
