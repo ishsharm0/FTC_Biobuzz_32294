@@ -1,9 +1,10 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
+import com.pedropathing.drivetrain.DrivePowers;
 import com.pedropathing.follower.Follower;
-import com.pedropathing.ftc.drivetrains.MecanumConstants;
-import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.Pose;
+import com.pedropathing.follower.ManualDrive;
+import com.pedropathing.math.Pose;
+import com.pedropathing.revhub.drivetrains.MecanumConfig;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
@@ -11,6 +12,8 @@ import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+
+import static com.pedropathing.api.Paths.line;
 
 import java.util.Arrays;
 import java.util.List;
@@ -24,7 +27,7 @@ import java.util.List;
  *                  the same wheel speed whether the battery is full or nearly flat.
  *                  Sticks get expo (finer control near center) and slew (no instant jumps).
  *
- * Either way the follower keeps updating, so odometry stays live and driveTo() works.
+ * Either way odometry keeps updating, so the pose stays live and driveTo() works.
  * Auto just uses the follower and never touches VELOCITY.
  */
 public class Drivetrain implements Subsystem {
@@ -50,7 +53,6 @@ public class Drivetrain implements Subsystem {
 
     private Mode mode = Mode.PEDRO;
     private boolean fieldCentric = false;
-    private boolean teleop = false;
     private double scale = 1.0;
 
     private long lastCommandNs = 0L;
@@ -59,23 +61,21 @@ public class Drivetrain implements Subsystem {
     public Drivetrain(HardwareMap hardwareMap) {
         follower = Constants.createFollower(hardwareMap);
 
-        MecanumConstants config = Constants.driveConstants;
-        leftFront = hardwareMap.get(DcMotorEx.class, config.getLeftFrontMotorName());
-        leftRear = hardwareMap.get(DcMotorEx.class, config.getLeftRearMotorName());
-        rightFront = hardwareMap.get(DcMotorEx.class, config.getRightFrontMotorName());
-        rightRear = hardwareMap.get(DcMotorEx.class, config.getRightRearMotorName());
+        MecanumConfig config = Constants.drivetrainConfig;
+        leftFront = hardwareMap.get(DcMotorEx.class, config.frontLeftName.get());
+        leftRear = hardwareMap.get(DcMotorEx.class, config.backLeftName.get());
+        rightFront = hardwareMap.get(DcMotorEx.class, config.frontRightName.get());
+        rightRear = hardwareMap.get(DcMotorEx.class, config.backRightName.get());
         motors = Arrays.asList(leftFront, leftRear, rightFront, rightRear);
 
-        leftFront.setDirection(config.getLeftFrontMotorDirection());
-        leftRear.setDirection(config.getLeftRearMotorDirection());
-        rightFront.setDirection(config.getRightFrontMotorDirection());
-        rightRear.setDirection(config.getRightRearMotorDirection());
+        leftFront.setDirection(config.frontLeftDirection.get());
+        leftRear.setDirection(config.backLeftDirection.get());
+        rightFront.setDirection(config.frontRightDirection.get());
+        rightRear.setDirection(config.backRightDirection.get());
     }
 
     public void startTeleOp(Pose startPose) {
-        teleop = true;
-        follower.setStartingPose(startPose);
-        follower.startTeleopDrive();
+        follower.setPose(startPose);
     }
 
     /**
@@ -84,7 +84,8 @@ public class Drivetrain implements Subsystem {
      */
     public void drive(double forward, double strafe, double turn) {
         if (mode == Mode.PEDRO) {
-            follower.setTeleOpDrive(forward * scale, strafe * scale, turn * scale, !fieldCentric);
+            DrivePowers powers = new DrivePowers(forward * scale, strafe * scale, turn * scale);
+            follower.manual(fieldCentric ? ManualDrive.fieldCentric(powers, follower.pose().heading()) : powers);
             return;
         }
 
@@ -100,7 +101,7 @@ public class Drivetrain implements Subsystem {
         lastTurn = t;
 
         if (fieldCentric) {
-            double heading = follower.getPose().getHeading();
+            double heading = follower.pose().heading();
             double cos = Math.cos(-heading), sin = Math.sin(-heading);
             double rotatedF = f * cos - s * sin;
             s = f * sin + s * cos;
@@ -125,11 +126,8 @@ public class Drivetrain implements Subsystem {
     /** Drives a straight line to a field pose using odometry. Auto, or a TeleOp macro. */
     public void driveTo(Pose target) {
         setMode(Mode.PEDRO);
-        Pose current = follower.getPose();
-        follower.followPath(follower.pathBuilder()
-                .addPath(new BezierLine(current, target))
-                .setLinearHeadingInterpolation(current.getHeading(), target.getHeading())
-                .build(), true);
+        Pose current = follower.pose();
+        follower.follow(line(current, target).linear(current, target));
     }
 
     /** True while a driveTo() or path is still running. */
@@ -149,7 +147,9 @@ public class Drivetrain implements Subsystem {
 
         if (mode == Mode.VELOCITY) {
             // Stops the follower writing motor powers, then take the motors over.
-            follower.breakFollowing();
+            // update() only runs the localizer in this mode so the follower stays off them.
+            follower.stop();
+            follower.drivetrain.stop();
             for (DcMotorEx motor : motors) {
                 motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
                 motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -160,9 +160,6 @@ public class Drivetrain implements Subsystem {
             for (DcMotorEx motor : motors) {
                 motor.setVelocity(0.0);
                 motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            }
-            if (teleop) {
-                follower.startTeleopDrive();
             }
         }
     }
@@ -181,12 +178,11 @@ public class Drivetrain implements Subsystem {
 
     /** Makes the robot's current facing "forward" for field-centric driving. */
     public void resetHeading() {
-        Pose pose = follower.getPose();
-        follower.setPose(new Pose(pose.getX(), pose.getY(), 0));
+        follower.setHeading(0);
     }
 
     public Pose getPose() {
-        return follower.getPose();
+        return follower.pose();
     }
 
     private static double maxTicksPerSec() {
@@ -204,7 +200,11 @@ public class Drivetrain implements Subsystem {
 
     @Override
     public void update() {
-        follower.update();
+        if (mode == Mode.VELOCITY) {
+            follower.localizer.update();
+        } else {
+            follower.update();
+        }
     }
 
     @Override
@@ -214,14 +214,14 @@ public class Drivetrain implements Subsystem {
                 motor.setVelocity(0.0);
             }
         }
-        follower.breakFollowing();
+        follower.stop();
     }
 
     @Override
     public void addTelemetry(Telemetry telemetry) {
-        Pose pose = follower.getPose();
+        Pose pose = follower.pose();
         telemetry.addData("Drive", "%s, %s", mode, fieldCentric ? "field-centric" : "robot-centric");
         telemetry.addData("Pose", "x %.1f  y %.1f  h %.1f°",
-                pose.getX(), pose.getY(), Math.toDegrees(pose.getHeading()));
+                pose.x(), pose.y(), Math.toDegrees(pose.heading()));
     }
 }

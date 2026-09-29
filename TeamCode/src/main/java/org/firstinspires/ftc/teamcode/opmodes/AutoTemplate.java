@@ -1,13 +1,14 @@
 package org.firstinspires.ftc.teamcode.opmodes;
 
 import com.pedropathing.follower.Follower;
-import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.Pose;
-import com.pedropathing.paths.PathChain;
+import com.pedropathing.math.Pose;
+import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 import org.firstinspires.ftc.teamcode.Robot;
+
+import static com.pedropathing.api.Paths.line;
 
 /*
  * Starting point for autos: a state machine that runs one step per loop.
@@ -22,19 +23,16 @@ public class AutoTemplate extends OpMode {
 
     private Robot robot;
     private Follower follower;
-    private PathChain park;
+    private Path park;
     private int step;
 
     @Override
     public void init() {
         robot = new Robot(hardwareMap);
         follower = robot.drivetrain.follower;
-        follower.setStartingPose(startPose);
+        follower.setPose(startPose);
 
-        park = follower.pathBuilder()
-                .addPath(new BezierLine(startPose, parkPose))
-                .setLinearHeadingInterpolation(startPose.getHeading(), parkPose.getHeading())
-                .build();
+        park = line(startPose, parkPose).linear(startPose, parkPose);
     }
 
     @Override
@@ -48,7 +46,7 @@ public class AutoTemplate extends OpMode {
 
         switch (step) {
             case 0:
-                follower.followPath(park, true);
+                follower.follow(park);
                 step++;
                 break;
             case 1:

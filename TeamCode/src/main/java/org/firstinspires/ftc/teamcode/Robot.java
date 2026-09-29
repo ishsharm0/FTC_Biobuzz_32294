@@ -1,6 +1,6 @@
 package org.firstinspires.ftc.teamcode;
 
-import com.pedropathing.geometry.Pose;
+import com.pedropathing.math.Pose;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
@@ -21,7 +21,7 @@ import java.util.List;
 public class Robot {
 
     // Where the robot was when the last OpMode ended, so TeleOp can continue from Auto.
-    public static Pose lastPose = new Pose();
+    public static Pose lastPose = Pose.zero();
 
     public final Drivetrain drivetrain;
 
