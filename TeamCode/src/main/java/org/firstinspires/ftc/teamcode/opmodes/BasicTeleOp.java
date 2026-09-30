@@ -6,19 +6,15 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
 /*
- * Plain robot-centric mecanum drive: motor power only, no Pedro, no odometry.
- * Use it when the robot just needs to move, or when something in the Pedro setup is broken.
- *
  * gamepad1
  *   left stick     drive / strafe
  *   right stick X  turn
  *   right bumper   slow mode (hold)
- *
  * Motor names and directions must match the robot configuration. If the robot
  * spins or drifts when driving straight, flip the offending motor's direction below.
  */
-@TeleOp(name = "Basic Mecanum TeleOp", group = "BIOBUZZ")
-public class BasicMecanumTeleOp extends LinearOpMode {
+@TeleOp(name = "Basic TeleOp", group = "BIOBUZZ")
+public class BasicTeleOp extends LinearOpMode {
 
     public static double SLOW_SCALE = 0.4;
 
