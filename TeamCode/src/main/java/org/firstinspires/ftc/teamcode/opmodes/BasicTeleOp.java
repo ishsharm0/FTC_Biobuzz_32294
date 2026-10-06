@@ -25,10 +25,10 @@ public class BasicTeleOp extends LinearOpMode {
         DcMotor rightFront = hardwareMap.get(DcMotor.class, "frontRight");
         DcMotor rightRear = hardwareMap.get(DcMotor.class, "backRight");
 
-        leftFront.setDirection(DcMotorSimple.Direction.REVERSE);
-        leftRear.setDirection(DcMotorSimple.Direction.REVERSE);
-        rightFront.setDirection(DcMotorSimple.Direction.FORWARD);
-        rightRear.setDirection(DcMotorSimple.Direction.FORWARD);
+        leftFront.setDirection(DcMotorSimple.Direction.FORWARD);
+        leftRear.setDirection(DcMotorSimple.Direction.FORWARD);
+        rightFront.setDirection(DcMotorSimple.Direction.REVERSE);
+        rightRear.setDirection(DcMotorSimple.Direction.REVERSE);
 
         for (DcMotor motor : new DcMotor[]{leftFront, leftRear, rightFront, rightRear}) {
             motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
