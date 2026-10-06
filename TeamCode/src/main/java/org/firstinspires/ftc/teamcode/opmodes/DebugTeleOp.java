@@ -38,7 +38,7 @@ import java.util.List;
  *   left stick Y     nudge position
  *   A / B / X        go to 0 / 0.5 / 1
  */
-@TeleOp(name = "Debug TeleOp", group = "BIOBUZZ")
+@TeleOp(name = "DEBUG", group = "BIOBUZZ")
 public class DebugTeleOp extends LinearOpMode {
 
     public static double TEST_POWER = 0.3;
