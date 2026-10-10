@@ -9,12 +9,13 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
  * gamepad1
  *   left stick     drive / strafe
  *   right stick X  turn
- *   right bumper   slow mode (hold)
+ *   left bumper    slow mode (hold)
+ *   left trigger   brake (hold)
  * Motor names and directions must match the robot configuration. If the robot
  * spins or drifts when driving straight, flip the offending motor's direction below.
  */
-@TeleOp(name = "Basic TeleOp", group = "BIOBUZZ")
-public class BasicTeleOp extends LinearOpMode {
+@TeleOp(name = "Push Bot", group = "BIOBUZZ")
+public class Oct10TeleOpPush extends LinearOpMode {
 
     public static double SLOW_SCALE = 0.4;
 
@@ -24,7 +25,6 @@ public class BasicTeleOp extends LinearOpMode {
         DcMotor leftRear = hardwareMap.get(DcMotor.class, "backLeft");
         DcMotor rightFront = hardwareMap.get(DcMotor.class, "frontRight");
         DcMotor rightRear = hardwareMap.get(DcMotor.class, "backRight");
-
 
         leftFront.setDirection(DcMotorSimple.Direction.REVERSE);
         leftRear.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -55,14 +55,16 @@ public class BasicTeleOp extends LinearOpMode {
             // Keep the wheel ratios when any wheel would go past full power.
             double max = Math.max(1.0, Math.max(Math.max(Math.abs(lf), Math.abs(lr)),
                     Math.max(Math.abs(rf), Math.abs(rr))));
-            double scale = (gamepad1.right_bumper ? SLOW_SCALE : 1.0) / max;
+            boolean braking = gamepad1.left_trigger > 0.0;
+            boolean slowMode = gamepad1.left_bumper;
+            double scale = (slowMode ? SLOW_SCALE : 1.0) / max;
 
-            leftFront.setPower(lf * scale);
-            leftRear.setPower(lr * scale);
-            rightFront.setPower(rf * scale);
-            rightRear.setPower(rr * scale);
+            leftFront.setPower(braking ? 0.0 : lf * scale);
+            leftRear.setPower(braking ? 0.0 : lr * scale);
+            rightFront.setPower(braking ? 0.0 : rf * scale);
+            rightRear.setPower(braking ? 0.0 : rr * scale);
 
-            telemetry.addData("Mode", gamepad1.right_bumper ? "slow" : "normal");
+            telemetry.addData("Mode", braking ? "brake" : slowMode ? "slow" : "normal");
             telemetry.addData("Front L/R", "%.2f  %.2f", leftFront.getPower(), rightFront.getPower());
             telemetry.addData("Back  L/R", "%.2f  %.2f", leftRear.getPower(), rightRear.getPower());
             telemetry.update();
