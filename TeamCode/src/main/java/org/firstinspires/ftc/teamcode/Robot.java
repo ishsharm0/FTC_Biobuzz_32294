@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
 import org.firstinspires.ftc.teamcode.subsystems.Subsystem;
+import org.firstinspires.ftc.teamcode.subsystems.Vision;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,7 @@ public class Robot {
     public static Pose lastPose = Pose.zero();
 
     public final Drivetrain drivetrain;
+    public final Vision vision;
 
     private final List<LynxModule> hubs;
     private final List<Subsystem> subsystems = new ArrayList<>();
@@ -35,6 +37,7 @@ public class Robot {
         }
 
         drivetrain = register(new Drivetrain(hardwareMap));
+        vision     = register(new Vision(hardwareMap));
     }
 
     private <T extends Subsystem> T register(T subsystem) {
