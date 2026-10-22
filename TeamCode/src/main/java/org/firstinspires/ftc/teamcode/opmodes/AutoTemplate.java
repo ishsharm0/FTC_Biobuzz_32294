@@ -37,7 +37,7 @@ public class AutoTemplate extends OpMode {
         // Wait for the camera to start streaming.
         // During init the stream runs so we can confirm camera health on telemetry.
         // It will be stopped before the match starts to reclaim CPU.
-        robot.vision.waitUntilReady();
+        robot.vision.waitUntilReady(telemetry);
         telemetry.addData("Vision", robot.vision.isReady() ? "Camera ready" : "Camera timeout — check connection");
         telemetry.update();
     }
@@ -52,10 +52,10 @@ public class AutoTemplate extends OpMode {
 
     @Override
     public void start() {
-        // Stop the camera stream the moment the match starts.
-        // The drivetrain and odometry get full CPU during path following.
-        // resumeStream() will be called just before the HIVE approach step.
-        robot.vision.stopStream();
+        // Stream is already off (Vision starts with stream stopped).
+        // stopStream() during init_loop was already called after waitUntilReady.
+        // Drivetrain and odometry get full CPU from the first loop iteration.
+        robot.vision.stopStream(); // ensure off regardless of init state
         step = 0;
     }
 

@@ -41,10 +41,7 @@ public class MainTeleOp extends LinearOpMode {
         Robot robot = new Robot(hardwareMap);
         robot.drivetrain.startTeleOp(Robot.lastPose);
 
-        // Stop the camera stream immediately — saves CPU for the whole match.
-        // It will be resumed on demand when the driver holds left bumper.
-        robot.vision.stopStream();
-
+        // Vision starts with stream off by default — no stopStream() needed here.
         telemetry.addLine("Ready  |  hold LB to aim at HIVE");
         telemetry.update();
 

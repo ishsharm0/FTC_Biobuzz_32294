@@ -72,17 +72,21 @@ public class Vision implements Subsystem {
     // when the robot has moved since the last frame was captured.
     public static long MAX_DETECTION_AGE_MS = 200;
 
-    // ── Accuracy: 5. Lens calibration (Logitech C920 at 640x480) ─────────────
-    // These are the OpenCV camera intrinsic parameters for the C920.
-    // Obtained from the FTC sample ConceptAprilTagOptimizeExposure and community data.
-    //   fx, fy = focal length in pixels
-    //   cx, cy = principal point (optical centre) in pixels
+    // ── Accuracy: 4. Lens calibration (ADESSO HD 1080p at 640x480) ───────────
+    // No published calibration exists for the ADESSO. These are safe generic
+    // estimates for a 1080p sensor run at 640x480:
+    //   fx = fy = FRAME_WIDTH (standard approximation for unknown webcams)
+    //   cx = FRAME_WIDTH / 2, cy = FRAME_HEIGHT / 2 (optical centre)
     //
-    // If you run a ChArUco calibration on your specific camera, replace these values.
-    // To suppress the SDK's built-in calibration warning, set USE_CALIBRATION = true.
+    // For best accuracy, run a ChArUco calibration on your specific camera:
+    //   1. Print the ChArUco board from the Limelight calibration page
+    //   2. Run the FTC SDK calibration OpMode (ConceptAprilTagOptimizeExposure)
+    //   3. Replace the values below with your results
+    //
+    // If USE_CALIBRATION = false, the SDK uses its own built-in defaults.
     private static final boolean USE_CALIBRATION = true;
-    private static final double CAL_FX = 578.272;
-    private static final double CAL_FY = 578.272;
+    private static final double CAL_FX = 640.0;   // generic estimate: equal to frame width
+    private static final double CAL_FY = 640.0;
     private static final double CAL_CX = 320.0;   // half of FRAME_WIDTH
     private static final double CAL_CY = 240.0;   // half of FRAME_HEIGHT
 
@@ -213,9 +217,18 @@ public class Vision implements Subsystem {
                 .addProcessor(aprilTag)
                 .setCameraResolution(new android.util.Size(FRAME_WIDTH, FRAME_HEIGHT))
                 .setStreamFormat(VisionPortal.StreamFormat.YUY2)
+                .setAutoStartStreamOnBuild(false)  // don't stream until explicitly requested
+                .enableLiveView(false)             // no live view — saves CPU and memory
+                .setShowStatsOverlay(false)        // no stats overlay
                 .build();
 
-        RobotLog.ii(TAG, "VisionPortal built — waiting for streaming to begin.");
+        // Start with processor disabled — enable only when actively targeting.
+        visionPortal.setProcessorEnabled(aprilTag, false);
+        processorEnabled = false;
+        streaming = false;
+
+        RobotLog.ii(TAG, "VisionPortal built — stream and processor both OFF. " +
+                "Call resumeStream() + enable() before reading targets.");
     }
 
     // ── Subsystem ─────────────────────────────────────────────────────────────
@@ -280,14 +293,47 @@ public class Vision implements Subsystem {
     }
 
     /**
-     * Blocks until the camera is streaming, checking every 50 ms.
-     * Times out after 5 seconds. After streaming starts, applies manual
-     * exposure and gain to lock the camera settings.
+     * Starts the stream if not already running, then blocks until the camera
+     * reaches STREAMING state — up to 15 seconds. Safe to call even if the
+     * stream is already running.
      */
     public void waitUntilReady() {
-        long deadline = System.currentTimeMillis() + 5000;
+        waitUntilReady(null);
+    }
+
+    /**
+     * Same as {@link #waitUntilReady()} but also pushes state updates to the
+     * Driver Station telemetry so you can see progress without needing Logcat.
+     */
+    public void waitUntilReady(org.firstinspires.ftc.robotcore.external.Telemetry telemetry) {
+        // Start the stream if it isn't already running.
+        if (!streaming) {
+            RobotLog.ii(TAG, "waitUntilReady: starting stream.");
+            visionPortal.resumeStreaming();
+            streaming = true;
+        }
+
+        long deadline  = System.currentTimeMillis() + 15_000;
+        long lastLogMs = System.currentTimeMillis();
+
+        RobotLog.ii(TAG, "Waiting for camera \"%s\" to reach STREAMING state...", CAMERA_NAME);
+
         while (!isReady() && System.currentTimeMillis() < deadline) {
-            try { Thread.sleep(50); } catch (InterruptedException e) {
+            long elapsed = 15_000 - (deadline - System.currentTimeMillis());
+
+            if (System.currentTimeMillis() - lastLogMs >= 1000) {
+                VisionPortal.CameraState state = visionPortal.getCameraState();
+                RobotLog.ii(TAG, "Camera state: %s  (%.1f s elapsed)", state, elapsed / 1000.0);
+
+                if (telemetry != null) {
+                    telemetry.addData("Camera", state.toString());
+                    telemetry.addData("Waiting", "%.1f s / 15.0 s", elapsed / 1000.0);
+                    telemetry.update();
+                }
+                lastLogMs = System.currentTimeMillis();
+            }
+
+            try { Thread.sleep(100); } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 RobotLog.ww(TAG, e, "waitUntilReady interrupted before camera was ready.");
                 break;
@@ -297,9 +343,13 @@ public class Vision implements Subsystem {
         if (isReady()) {
             RobotLog.ii(TAG, "Camera is STREAMING and ready.");
         } else {
-            RobotLog.ee(TAG, "Camera did NOT reach STREAMING state within 5 seconds. " +
-                    "Current state: %s. Check USB connection and hardware config.",
-                    visionPortal.getCameraState());
+            streaming = false; // reset — stream never actually started
+            RobotLog.ee(TAG, "Camera did NOT reach STREAMING state within 15 seconds. " +
+                    "Final state: %s. " +
+                    "Check: (1) camera in USB 3.0 (blue) port, " +
+                    "(2) camera named \"%s\" in Driver Station config, " +
+                    "(3) try unplugging and replugging the camera.",
+                    visionPortal.getCameraState(), CAMERA_NAME);
         }
     }
 
@@ -343,8 +393,8 @@ public class Vision implements Subsystem {
     }
 
     /**
-     * Resumes the camera stream. Blocks until streaming or 2s timeout.
-     * Re-applies exposure lock after resuming.
+     * Resumes the camera stream after stopStream(). Blocks until streaming
+     * or 5 second timeout. Clears rolling averages on resume.
      */
     public void resumeStream() {
         if (!streaming) {
@@ -352,7 +402,7 @@ public class Vision implements Subsystem {
             visionPortal.resumeStreaming();
             streaming = true;
 
-            long deadline = System.currentTimeMillis() + 2000;
+            long deadline = System.currentTimeMillis() + 5000;
             while (!isReady() && System.currentTimeMillis() < deadline) {
                 try { Thread.sleep(30); } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

@@ -53,10 +53,10 @@ public class VisionTest extends LinearOpMode {
             return;
         }
 
-        // Wait for camera to start streaming.
+        // Wait for camera to start streaming — shows state on Driver Station.
         telemetry.addLine("Waiting for camera...");
         telemetry.update();
-        vision.waitUntilReady();
+        vision.waitUntilReady(telemetry);
 
         if (vision.isReady()) {
             RobotLog.ii(TAG, "Camera ready. Waiting for Play.");
