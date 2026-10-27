@@ -12,7 +12,7 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
  *   left bumper     slow mode (hold)
  *   right bumper    slow mode (hold)
  *   right trigger   intake (hold)
- *   left trigger    transfer (hold)
+ *   left trigger     transfer (hold)
  */
 @TeleOp(name = "Oct24 TeleOp", group = "BIOBUZZ")
 public class Oct24TeleOp extends LinearOpMode {
