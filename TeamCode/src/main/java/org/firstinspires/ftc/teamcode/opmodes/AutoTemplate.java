@@ -16,7 +16,8 @@ import static com.pedropathing.api.Paths.line;
  * Poses are in inches/radians on the Pedro field (0..144).
  */
 @Autonomous(name = "Auto Template", group = "BIOBUZZ")
-public class AutoTemplate extends OpMode {
+public class
+AutoTemplate extends OpMode {
 
     private final Pose startPose = new Pose(56, 8, Math.toRadians(90));
     private final Pose parkPose = new Pose(56, 36, Math.toRadians(90));
