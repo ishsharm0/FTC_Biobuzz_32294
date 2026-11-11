@@ -5,7 +5,9 @@ import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
+import org.firstinspires.ftc.teamcode.subsystems.RearLauncher;
 import org.firstinspires.ftc.teamcode.subsystems.Subsystem;
 import org.firstinspires.ftc.teamcode.subsystems.Vision;
 
@@ -23,8 +25,12 @@ public class Robot {
 
     // Where the robot was when the last OpMode ended, so TeleOp can continue from Auto.
     public static Pose lastPose = Pose.zero();
+    // Set by the auto, so TeleOp knows which way the drivers are facing.
+    public static Field.Alliance alliance = Field.Alliance.RED;
 
     public final Drivetrain drivetrain;
+    public final RearLauncher launcher;
+    // Null when the config has no camera, so everything else still runs without one.
     public final Vision vision;
 
     private final List<LynxModule> hubs;
@@ -37,7 +43,10 @@ public class Robot {
         }
 
         drivetrain = register(new Drivetrain(hardwareMap));
-        vision     = register(new Vision(hardwareMap));
+        launcher = register(new RearLauncher(hardwareMap));
+        vision = hardwareMap.tryGet(WebcamName.class, Vision.CAMERA_NAME) != null
+                ? register(new Vision(hardwareMap))
+                : null;
     }
 
     private <T extends Subsystem> T register(T subsystem) {
