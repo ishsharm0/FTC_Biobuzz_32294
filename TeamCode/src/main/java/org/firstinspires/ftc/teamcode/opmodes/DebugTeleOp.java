@@ -23,16 +23,17 @@ import java.util.List;
  *   dpad up/down     select device
  *
  * MOTORS page: every motor in the config, one at a time.
+ *   Every motor starts FORWARD. Direction changes persist between pages for this run.
  *   left stick Y     run the selected motor (up = positive power)
  *   B (hold)         run the selected motor at +TEST_POWER
  *   A                flip the selected motor's direction (only for this run)
  *   Y                reset encoder
  *
- * DRIVE CHECK page: uses the directions in pedroPathing/Constants.java.
- *   X (hold)         all four wheels at +TEST_POWER. Every wheel should roll the robot forward
- *                    and show a positive velocity. Any wheel marked FLIP needs its direction
- *                    swapped in Constants (and BasicTeleOp).
- *   dpad up/down     pick one wheel; B (hold) runs just that wheel forward
+ * DRIVE CHECK page: uses the same motor directions as the MOTORS page.
+ *   X (hold)         all four wheels at +TEST_POWER
+ *   dpad up/down     pick one wheel; B (hold) runs just that wheel at +TEST_POWER
+ *   A                flip the selected wheel's direction (only for this run)
+ *   Watch the physical wheels to establish forward; encoder sign cannot establish it.
  *
  * SERVOS page: every servo in the config.
  *   left stick Y     nudge position
@@ -57,6 +58,7 @@ public class DebugTeleOp extends LinearOpMode {
             motorNames.add(nameOf(motor));
         }
         for (DcMotorEx motor : motors) {
+            motor.setDirection(DcMotorSimple.Direction.FORWARD);
             motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
             motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -73,9 +75,6 @@ public class DebugTeleOp extends LinearOpMode {
         String[] driveNames = {
                 config.frontLeftName.get(), config.backLeftName.get(),
                 config.frontRightName.get(), config.backRightName.get()};
-        DcMotorSimple.Direction[] driveDirections = {
-                config.frontLeftDirection.get(), config.backLeftDirection.get(),
-                config.frontRightDirection.get(), config.backRightDirection.get()};
         DcMotorEx[] drive = new DcMotorEx[4];
         for (int i = 0; i < 4; i++) {
             drive[i] = hardwareMap.tryGet(DcMotorEx.class, driveNames[i]);
@@ -116,6 +115,7 @@ public class DebugTeleOp extends LinearOpMode {
                     }
                     DcMotorEx motor = motors.get(motorIndex);
                     if (gamepad1.aWasPressed()) {
+                        motor.setPower(0);
                         motor.setDirection(motor.getDirection() == DcMotorSimple.Direction.FORWARD
                                 ? DcMotorSimple.Direction.REVERSE
                                 : DcMotorSimple.Direction.FORWARD);
@@ -134,8 +134,8 @@ public class DebugTeleOp extends LinearOpMode {
                                 m.getCurrentPosition(), m.getVelocity()));
                     }
                     telemetry.addData("Power", "%.2f", power);
-                    telemetry.addLine("Positive power should spin the mechanism its 'forward' way.");
-                    telemetry.addLine("If not, press A and copy the new direction into the code.");
+                    telemetry.addLine("All motors start FORWARD. A flips the selected motor.");
+                    telemetry.addLine("Direction changes persist between pages, only for this run.");
                     break;
                 }
 
@@ -143,11 +143,17 @@ public class DebugTeleOp extends LinearOpMode {
                     if (select != 0) {
                         driveIndex = wrap(driveIndex + select, 4);
                     }
+                    if (gamepad1.aWasPressed() && drive[driveIndex] != null) {
+                        DcMotorEx motor = drive[driveIndex];
+                        motor.setPower(0);
+                        motor.setDirection(motor.getDirection() == DcMotorSimple.Direction.FORWARD
+                                ? DcMotorSimple.Direction.REVERSE
+                                : DcMotorSimple.Direction.FORWARD);
+                    }
                     for (int i = 0; i < 4; i++) {
                         if (drive[i] == null) {
                             continue;
                         }
-                        drive[i].setDirection(driveDirections[i]);
                         boolean run = gamepad1.x || (gamepad1.b && i == driveIndex);
                         drive[i].setPower(run ? TEST_POWER : 0);
                     }
@@ -160,14 +166,13 @@ public class DebugTeleOp extends LinearOpMode {
                             continue;
                         }
                         double velocity = drive[i].getVelocity();
-                        String verdict = drive[i].getPower() == 0 ? ""
-                                : velocity > 20 ? "ok" : velocity < -20 ? "FLIP" : "not moving?";
-                        telemetry.addLine(String.format("%s %-11s %-7s vel %7.0f  %s",
-                                marker, DRIVE_LABELS[i], driveDirections[i], velocity, verdict));
+                        telemetry.addLine(String.format("%s %-11s '%s' %-7s power %.2f vel %7.0f",
+                                marker, DRIVE_LABELS[i], driveNames[i], drive[i].getDirection(),
+                                drive[i].getPower(), velocity));
                     }
-                    telemetry.addLine("Hold X: all wheels forward. Hold B: selected wheel.");
-                    telemetry.addLine("Watch each wheel too: it should roll the robot forward.");
-                    telemetry.addLine("'not moving?' = unplugged motor or encoder cable.");
+                    telemetry.addLine("Hold X: +power on all wheels. Hold B: selected wheel.");
+                    telemetry.addLine("A flips the selected wheel; changes persist between pages.");
+                    telemetry.addLine("Check physical wheel direction; encoder sign does not prove forward.");
                     break;
                 }
 

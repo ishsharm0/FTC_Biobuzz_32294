@@ -39,6 +39,8 @@ Names in the Driver Station's active config must match exactly:
 | --- | --- |
 | `frontLeft`, `backLeft`, `frontRight`, `backRight` | Drive motors |
 | `pinpoint` | goBILDA Pinpoint (I2C) |
+| `intake`, `transfer` | Front intake and rear feed/outtake. Match auto pulses `transfer`; optional for Park Auto |
+| `Webcam 1` | USB camera, optional. Main TeleOp runs without it |
 
 ## 5. Drive
 
@@ -49,6 +51,38 @@ in `opmodes/BasicTeleOp.java`.
 **Main TeleOp** and **Auto Template** use Pedro Pathing + the Pinpoint. Don't trust paths until Pedro is tuned:
 open `http://192.168.43.1:10158` while connected to the hub and run Mecanum → Pinpoint → Foresight → Tests,
 pasting each result into `pedroPathing/Constants.java`.
+
+## 6. Match auto
+
+**Park Auto** / **Launch Park Auto** (Pedro + Pinpoint, so tune first). After INIT, on gamepad1: X / B picks
+blue / red, dpad up/down sets a start delay. Telemetry says where to place the robot.
+
+| OpMode | Start | Does | Points |
+| --- | --- | --- | --- |
+| Park Auto | back on the alliance wall, just audience-side of the loading zone | slides into the loading zone | LEAVE 3 + PARK 5 |
+| Launch Park Auto | front on the audience wall, rear outtake facing the raised cell | three single preload feed pulses, settle, then park | LEAVE3 + PARK5; successful HIVE TIP adds20 |
+
+Both robots leaving and parking is 16 points, which is the SWARM ranking point.
+Field positions live in `Field.java`, the paths in `opmodes/AutoPaths.java`. Set `ROBOT_LENGTH` / `ROBOT_WIDTH`
+in `Field.java` to the real robot. **Oct24 Auto** and **Leave** are the timed fallbacks that need no odometry.
+
+The robot uses the existing `transfer` motor as the rear outtake (REVERSE, as in Oct24 TeleOp).
+`RearLauncher.FEED_SECONDS = 0.25` is an initial **unmeasured feed pulse**, not a ball sensor: adjust it on the robot
+until one pulse ejects exactly one ball. `RearLauncher.SHOT_INTERVAL_SECONDS` and
+`LaunchParkAuto.SHOT_INTERVAL_SECONDS` are both 0.9 s, the team's loaded-shot estimate; keep both values together.
+No separate flywheel motor is configured by this code. A missing `transfer` skips launching and still parks.
+The fourth preload stays aboard: the initial raised cell has three NECTAR, and three POLLEN can tip it.
+The auto verifies its launch pose before firing, waits for the hive to settle, and stops all outputs by 29 s.
+The maximum optional start delay is 10 s so time remains for parking.
+
+Poses use Pedro's nominal 144 in. corner frame. `Field.WALL_INSET` accounts for the physical CAD wall being 1.7929 m
+from center, so starts actually touch it. The rear shooter faces the hive at heading -90 deg for red; blue is rotated 180 deg.
+The 20 in. launch Y is a simulator reference stand, not a measured ballistic calibration for this robot.
+
+To try an auto in the BIOBUZZ simulator, import its file together with `AutoPaths.java` and `Field.java`.
+The simulator starts at the declared initial pose, with a front intake and a rear FIFO shooter firing one ball
+at a time 0.9 s apart. `scripts/team-auto.ts --write-plan` in the simulator regenerates its built-in 32294 path
+from the synchronized Java fixture snapshots.
 
 ## Stuck?
 

@@ -3,32 +3,58 @@ package org.firstinspires.ftc.teamcode.opmodes;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
+import org.firstinspires.ftc.teamcode.Field;
 import org.firstinspires.ftc.teamcode.Robot;
 import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
+import org.firstinspires.ftc.teamcode.subsystems.Vision;
 
 /*
  * gamepad1
- *   left stick     drive / strafe
- *   right stick X  turn
- *   right bumper   slow mode (hold)
- *   back           toggle field-centric
- *   start          reset heading (field-centric forward = where the robot faces now)
- *   dpad up        toggle velocity drive (steady wheel speed) vs follower drive
+ *   left stick      drive / strafe
+ *   right stick X   turn
+ *   right bumper    slow mode (hold)
+ *   left bumper     vision aim mode (hold) — enables camera while held, disables on release
+ *   back            toggle field-centric
+ *   start           reset heading (field-centric forward = where the robot faces now)
+ *   dpad up         toggle velocity drive (steady wheel speed) vs follower drive
+ *
+ * Vision CPU strategy:
+ *   Camera stream is stopped on match start to save CPU.
+ *   Holding left bumper resumes the stream and enables the AprilTag processor.
+ *   Releasing left bumper disables the processor.
+ *   The stream stays running while left bumper is held, and is stopped again
+ *   1 second after the bumper is released to avoid thrashing start/stop rapidly.
+ *
+ * The alliance comes from whichever auto ran last (Red Auto / Blue Auto). Red if none did.
  */
 @TeleOp(name = "Main TeleOp", group = "BIOBUZZ")
 public class MainTeleOp extends LinearOpMode {
+
+    // How long after releasing the aim button before the stream is fully stopped (ms).
+    // Keeps it warm briefly so quick re-presses don't pay the resume cost.
+    private static final long STREAM_IDLE_TIMEOUT_MS = 1000;
 
     @Override
     public void runOpMode() {
         Robot robot = new Robot(hardwareMap);
         robot.drivetrain.startTeleOp(Robot.lastPose);
+        robot.drivetrain.setDriverHeading(Robot.alliance.driverHeading());
+        Vision.Alliance alliance = Robot.alliance == Field.Alliance.BLUE
+                ? Vision.Alliance.BLUE
+                : Vision.Alliance.RED;
 
-        telemetry.addLine("Ready");
+        // Vision starts with stream off by default — no stopStream() needed here.
+        telemetry.addData("Alliance", alliance);
+        telemetry.addLine(robot.vision != null ? "Ready  |  hold LB to aim at HIVE" : "Ready  |  no camera in config");
         telemetry.update();
 
         waitForStart();
 
+        long streamIdleStart = -1; // timestamp when aim button was last released
+
         while (opModeIsActive()) {
+
+            // ── Drivetrain controls ───────────────────────────────────────────
             if (gamepad1.backWasPressed()) {
                 robot.drivetrain.setFieldCentric(!robot.drivetrain.isFieldCentric());
             }
@@ -42,10 +68,47 @@ public class MainTeleOp extends LinearOpMode {
             }
 
             robot.drivetrain.setSlowMode(gamepad1.right_bumper);
-            robot.drivetrain.drive(-gamepad1.left_stick_y, -gamepad1.left_stick_x, -gamepad1.right_stick_x);
+            robot.drivetrain.drive(
+                    -gamepad1.left_stick_y,
+                    -gamepad1.left_stick_x,
+                    -gamepad1.right_stick_x);
 
+            // ── Vision aim mode (left bumper) ─────────────────────────────────
+            if (robot.vision == null) {
+                // No camera configured: drive only.
+            } else if (gamepad1.left_bumper) {
+                // Button held — ensure stream and processor are both on.
+                if (!robot.vision.isStreaming()) {
+                    robot.vision.resumeStream();
+                }
+                robot.vision.enable();
+                streamIdleStart = -1; // reset idle timer
+
+                Vision.HiveTarget target = robot.vision.getHiveTarget(alliance);
+                if (target != null) {
+                    telemetry.addData("HIVE Target", target.toString());
+                    telemetry.addData("In window", target.isInScoringWindow() ? "YES — SHOOT" : "no");
+                } else {
+                    telemetry.addData("HIVE Target", "not found");
+                }
+            } else {
+                // Button released — disable processor immediately to free CPU.
+                if (robot.vision.isEnabled()) {
+                    robot.vision.disable();
+                    streamIdleStart = System.currentTimeMillis();
+                }
+
+                // After idle timeout, stop the stream entirely.
+                if (streamIdleStart > 0
+                        && robot.vision.isStreaming()
+                        && System.currentTimeMillis() - streamIdleStart > STREAM_IDLE_TIMEOUT_MS) {
+                    robot.vision.stopStream();
+                    streamIdleStart = -1;
+                }
+            }
+
+            // ── Update and telemetry ──────────────────────────────────────────
             robot.update();
-
             robot.addTelemetry(telemetry);
             telemetry.update();
         }
