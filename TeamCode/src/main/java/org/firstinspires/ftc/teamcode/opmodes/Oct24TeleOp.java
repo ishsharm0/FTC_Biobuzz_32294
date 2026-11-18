@@ -1,43 +1,49 @@
 package org.firstinspires.ftc.teamcode.opmodes;
 
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
+import java.util.List;
+
 /*
+ * Oct24 TeleOp — joystick-only, robot-centric mecanum drive.
+ *
  * gamepad1
- *   left stick      drive / strafe
- *   right stick X   turn
- *   left bumper     slow mode (hold)
- *   right bumper    slow mode (hold)
- *   right trigger   intake (hold)
- *   left trigger     transfer (hold)
+ *   left stick X     forward / back   (relative to the robot)  -- unchanged
+ *   left stick Y     strafe left / right (relative to the robot) -- unchanged
+ *   right stick X    rotate: left-side wheels vs right-side wheels, always opposing
+ *
+ * The config names of the motors do not match their physical corners, so the
+ * usual mecanum turn is applied to the front/back pairs. The turn coefficients
+ * below are assigned per motor so the physical LEFT side and RIGHT side oppose
+ * each other, giving a clean spin about the robot's center.
  */
 @TeleOp(name = "Oct24 TeleOp", group = "BIOBUZZ")
 public class Oct24TeleOp extends LinearOpMode {
 
-    public static double SLOW_SCALE     = 0.4;
-    public static double INTAKE_POWER   = 0.3;
-    public static double TRANSFER_POWER = 1.0;
+    private static final double DEADZONE = 0.10;
 
     @Override
     public void runOpMode() {
+        List<LynxModule> hubs = hardwareMap.getAll(LynxModule.class);
+        for (LynxModule hub : hubs) {
+            hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        }
+
         DcMotor leftFront  = hardwareMap.get(DcMotor.class, "frontLeft");
         DcMotor leftRear   = hardwareMap.get(DcMotor.class, "backLeft");
         DcMotor rightFront = hardwareMap.get(DcMotor.class, "frontRight");
         DcMotor rightRear  = hardwareMap.get(DcMotor.class, "backRight");
-        DcMotor intake     = hardwareMap.get(DcMotor.class, "intake");
-        DcMotor transfer   = hardwareMap.get(DcMotor.class, "transfer");
 
         leftFront.setDirection(DcMotorSimple.Direction.REVERSE);
         leftRear.setDirection(DcMotorSimple.Direction.REVERSE);
         rightFront.setDirection(DcMotorSimple.Direction.FORWARD);
         rightRear.setDirection(DcMotorSimple.Direction.FORWARD);
-        intake.setDirection(DcMotorSimple.Direction.FORWARD);
-        transfer.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        DcMotor[] motors = {leftFront, leftRear, rightFront, rightRear, intake, transfer};
+        DcMotor[] motors = {leftFront, leftRear, rightFront, rightRear};
         for (DcMotor motor : motors) {
             motor.setPower(0.0);
             motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -45,47 +51,52 @@ public class Oct24TeleOp extends LinearOpMode {
         }
 
         telemetry.addLine("Oct24 TeleOp ready");
-        telemetry.addLine("LB/RB: slow  |  RT: intake  |  LT: transfer");
+        telemetry.addLine("Left stick: move  |  Right stick: spin left/right sides");
         telemetry.update();
 
         waitForStart();
 
         while (opModeIsActive()) {
-            // ── Drivetrain ────────────────────────────────────────────────────
-            double f = -gamepad1.left_stick_y;
-            double s = -gamepad1.left_stick_x;
-            double t = -gamepad1.right_stick_x;
+            // ── Joysticks ─────────────────────────────────────────────────────
+            double f = deadzone(-gamepad1.left_stick_x);   // + = forward  (LOCKED)
+            double s = deadzone(-gamepad1.left_stick_y);   // + = left     (LOCKED)
+            double t = deadzone(gamepad1.right_stick_x);   // + = spin right (clockwise)
 
+            // Translation coefficients are the same as before. Only the turn
+            // term is assigned front-pair vs back-pair so that, physically,
+            // the left side and right side always oppose each other.
             double lf = f - s - t;
-            double lr = f + s - t;
-            double rf = f + s + t;
+            double rf = f + s - t;
+            double lr = f + s + t;
             double rr = f - s + t;
 
             double max = Math.max(1.0, Math.max(Math.max(Math.abs(lf), Math.abs(lr)),
                     Math.max(Math.abs(rf), Math.abs(rr))));
-            boolean slowMode = gamepad1.left_bumper || gamepad1.right_bumper;
-            double scale = (slowMode ? SLOW_SCALE : 1.0) / max;
 
-            leftFront.setPower(lf * scale);
-            leftRear.setPower(lr * scale);
-            rightFront.setPower(rf * scale);
-            rightRear.setPower(rr * scale);
+            leftFront.setPower(lf / max);
+            leftRear.setPower(lr / max);
+            rightFront.setPower(rf / max);
+            rightRear.setPower(rr / max);
 
-            // ── Mechanisms ────────────────────────────────────────────────────
-            intake.setPower(gamepad1.right_trigger > 0.1 ? INTAKE_POWER : (gamepad1.left_trigger > 0.1 ? -INTAKE_POWER : 0.0));
-//            transfer.setPower(gamepad1.left_trigger > 0.1 ? TRANSFER_POWER : 0.0);
+            for (LynxModule hub : hubs) {
+                hub.clearBulkCache();
+            }
 
             // ── Telemetry ─────────────────────────────────────────────────────
-            telemetry.addData("Mode",     slowMode ? "slow" : "normal");
-            telemetry.addData("Front L/R", "%.2f  %.2f", leftFront.getPower(), rightFront.getPower());
-            telemetry.addData("Back  L/R", "%.2f  %.2f", leftRear.getPower(), rightRear.getPower());
-            telemetry.addData("Intake",   gamepad1.right_trigger > 0.1 ? "ON" : "off");
-            telemetry.addData("Transfer", gamepad1.left_trigger  > 0.1 ? "ON" : "off");
+            telemetry.addData("Sticks", "f %.2f  s %.2f  t %.2f", f, s, t);
+            telemetry.addData("Wheels", "LF %.2f  LR %.2f  RF %.2f  RR %.2f",
+                    leftFront.getPower(), leftRear.getPower(),
+                    rightFront.getPower(), rightRear.getPower());
             telemetry.update();
         }
 
         for (DcMotor motor : motors) {
             motor.setPower(0.0);
         }
+    }
+
+    /** Kills tiny joystick drift around the center. */
+    private static double deadzone(double value) {
+        return Math.abs(value) < DEADZONE ? 0.0 : value;
     }
 }

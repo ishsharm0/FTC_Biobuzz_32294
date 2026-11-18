@@ -80,4 +80,8 @@ public class Constants {
     public static Follower createFollower(HardwareMap hardwareMap) {
         return new Follower(createLocalizer(hardwareMap), createDrivetrain(hardwareMap), createAlgorithm());
     }
+
+    public static Follower create(HardwareMap hardwareMap) {
+        return createFollower(hardwareMap);
+    }
 }
