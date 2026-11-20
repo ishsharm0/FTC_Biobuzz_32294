@@ -16,8 +16,13 @@ dependencies {
     implementation 'org.firstinspires.ftc:Vision:12.0.0'
     implementation 'androidx.appcompat:appcompat:1.2.0'
 
+    implementation 'com.pedropathing.ivy:pedro:1.1.1'
+
     implementation 'com.pedropathing:revhub:3.0.1'
     implementation 'com.pedropathing:tuning:1.0.1'
-    // implementation 'com.pedropathing.ivy:pedro:1.1.1'  // TEMP: disabled until ivy repo is fixed
+    // Ivy — command scheduler used by Pedro Pathing autos exported from the visualizer
+    // (pedropathing.com/visualizer). Every file that imports com.pedropathing.ivy.* needs
+    // this on the classpath. Resolved from Maven Central; do not remove.
+    implementation 'com.pedropathing.ivy:pedro:1.1.1'
 }
 
