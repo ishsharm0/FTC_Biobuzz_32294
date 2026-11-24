@@ -53,7 +53,7 @@ Names in the Driver Station's active config must match exactly:
 | **Launch Park Auto** | Pedro: front on the audience wall, three single shots into the raised CELL, then park |
 | **Timed Leave** | no odometry: drives forward for `DRIVE_SECONDS`. Use when the Pinpoint isn't working |
 | **DEBUG** | every motor and servo one at a time; DRIVE CHECK page verifies the drive motor directions |
-| **AprilTag Demo** | live AprilTag detection: distance and angles to every tag, camera tuning, hold LB to turn and face the closest tag. Watch it on the Driver Station: during INIT, menu → Camera Stream |
+| **AprilTag Demo** | live AprilTag detection: a top-down radar of every tag, distance and angles to the target, hold LB to face it or RB to drive up and stop square in front of it, B to lock onto a tag. Watch the camera on the Driver Station: during INIT, menu → Camera Stream. Set `CAMERA_ON_BACK` if the webcam faces backward |
 
 In the Pedro autos, during INIT on gamepad1: X / B picks blue / red, dpad up/down sets a start delay.
 Telemetry says where to place the robot.
