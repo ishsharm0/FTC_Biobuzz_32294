@@ -19,19 +19,10 @@ public class ParkAuto extends BiobuzzAuto {
 
     @Override
     protected void run() {
-        switch (step) {
-            case 0:
-                follower.follow(paths.wallToPark);
-                next();
-                break;
-            case 1:
-                if (pathDone()) {
-                    next();
-                }
-                break;
-            default:
-                // Parked. The follower holds the pose until the OpMode stops.
-                break;
+        if (step == 0) {
+            follower.follow(paths.wallToPark);
+            next();
         }
+        // The follower holds the end pose once the path is done.
     }
 }

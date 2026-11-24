@@ -4,54 +4,76 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.ElapsedTime;
+
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-/**
- * Rear outtake driven by the existing transfer motor. Front intake stays off during preload shots.
- * This is timed feeding, not a ball counter: tune FEED_SECONDS so one pulse feeds exactly one ball.
+/*
+ * Rear outtake, fed by the "transfer" motor. Optional: autos skip shooting without it.
+ *
+ * TeleOp holds a button to feed continuously. Auto fires timed pulses: there is no ball
+ * sensor, so tune FEED_SECONDS on the robot until one pulse fires exactly one ball.
  */
-public final class RearLauncher implements Subsystem {
-    public static String MOTOR_NAME = "transfer";
+public class RearLauncher implements Subsystem {
+
     public static double POWER = 1.0;
-    // Initial estimate only. Measure one-ball feed time on the robot before a match.
     public static double FEED_SECONDS = 0.25;
-    // Team estimate for a fully loaded rear shooter, 2026-11-10.
+    // Time from one shot to the next, including the feed pulse.
     public static double SHOT_INTERVAL_SECONDS = 0.9;
 
     private final DcMotor motor;
-    private final ElapsedTime clock = new ElapsedTime();
-    private final ShotCycle cycle = new ShotCycle();
+    private final ElapsedTime sinceShot = new ElapsedTime();
+    private boolean pulsing;
+    private boolean feeding;
 
-    public RearLauncher(HardwareMap map) {
-        motor = map.tryGet(DcMotor.class, MOTOR_NAME);
+    public RearLauncher(HardwareMap hardwareMap) {
+        motor = hardwareMap.tryGet(DcMotor.class, "transfer");
         if (motor != null) {
             motor.setDirection(DcMotorSimple.Direction.REVERSE);
             motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
             motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            motor.setPower(0.0);
         }
     }
 
-    public boolean available() { return motor != null; }
+    public boolean available() {
+        return motor != null;
+    }
 
-    /** Starts at most one feed pulse. A second request during recovery is refused. */
+    /** TeleOp: run the feed while true. */
+    public void feed(boolean on) {
+        feeding = on;
+    }
+
+    /** Auto: fire one timed pulse. Returns false, firing nothing, until the last shot has recovered. */
     public boolean shootOne() {
-        boolean accepted = available() && cycle.start(clock.seconds(), FEED_SECONDS, SHOT_INTERVAL_SECONDS);
+        if (!available() || (pulsing && sinceShot.seconds() < SHOT_INTERVAL_SECONDS)) {
+            return false;
+        }
+        pulsing = true;
+        sinceShot.reset();
         update();
-        return accepted;
+        return true;
     }
 
-    @Override public void update() {
-        if (motor != null) motor.setPower(cycle.feeding(clock.seconds()) ? POWER : 0.0);
+    private boolean pulseFeeding() {
+        return pulsing && sinceShot.seconds() < FEED_SECONDS;
     }
 
-    @Override public void stop() {
-        cycle.stop();
-        if (motor != null) motor.setPower(0.0);
+    @Override
+    public void update() {
+        if (motor != null) {
+            motor.setPower(feeding || pulseFeeding() ? POWER : 0.0);
+        }
     }
 
-    @Override public void addTelemetry(Telemetry telemetry) {
-        telemetry.addData("Rear outtake", !available() ? "transfer motor missing: drive/park only"
-                : cycle.feeding(clock.seconds()) ? "feeding one" : cycle.busy(clock.seconds()) ? "recovering" : "ready");
+    @Override
+    public void stop() {
+        feeding = pulsing = false;
+        update();
+    }
+
+    @Override
+    public void addTelemetry(Telemetry telemetry) {
+        telemetry.addData("Launcher", motor == null ? "no transfer motor in config"
+                : feeding || pulseFeeding() ? "feeding" : "idle");
     }
 }

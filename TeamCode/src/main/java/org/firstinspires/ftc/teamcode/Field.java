@@ -3,21 +3,17 @@ package org.firstinspires.ftc.teamcode;
 import com.pedropathing.math.Pose;
 
 /*
- * BIOBUZZ field positions, in inches.
+ * BIOBUZZ field positions, in inches, in Pedro's 144 in. frame.
  *
- *   x  0 at the nominal red corner, 144 at the nominal blue corner
- *   y  0 at the nominal audience edge, 144 at the nominal far edge
+ *   x  0 at the red corner, 144 at the blue corner
+ *   y  0 at the audience edge, 144 at the far edge
  *   heading 0 faces the blue wall, 90 faces away from the audience
  *
- * Everything is written for red. The field is the same after a half turn about its
+ * Everything is written for red. The field is symmetric under a half turn about its
  * center, so Alliance.pose() turns a red pose into the matching blue one.
  *
- * Nominal Pedro frame is 144 in. Physical wall/tape/hive offsets below are converted from
- * the official CAD in ftc-biobuzz-sim/cad/field-manifest.json and src/sim/config.ts.
- * The CAD inner wall is 1.7929 m from center, not 72 inches: preserve that inset so
- * the Java start pose actually touches the same wall as the simulator (G304).
- * Official rules: https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-11
- * Measure the assembled field and the real robot before relying on these targets.
+ * Wall, tape and HIVE offsets come from the official field CAD (via the BIOBUZZ simulator).
+ * The real inner wall is 1.7929 m from center, not 72 in., hence WALL_INSET.
  */
 public final class Field {
 
@@ -30,11 +26,6 @@ public final class Field {
                 return new Pose(x, y, Math.toRadians(headingDegrees));
             }
             return new Pose(SIZE - x, SIZE - y, Math.toRadians(headingDegrees - 180));
-        }
-
-        /** Field heading the drivers face from their alliance area. */
-        public double driverHeading() {
-            return this == RED ? 0.0 : Math.PI;
         }
     }
 
@@ -60,9 +51,8 @@ public final class Field {
     // The red cell that starts the match tilted up is the one on the audience side.
     public static final double UP_CELL_X = SIZE / 2.0 - 0.3237 / INCH_METERS;
 
-    // Gap left between the robot and the wall when parked. LEAVE needs the robot off the
-    // wall and PARK needs it partly inside the 11 in. deep zone, so 4 leaves about the
-    // same room for error both ways.
+    // Gap between robot and wall when parked: LEAVE needs it off the wall, PARK needs it
+    // partly inside the 11 in. deep zone. 4 in. leaves room for error both ways.
     public static double PARK_WALL_GAP = 4.0;
 
     private Field() {}

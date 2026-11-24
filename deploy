@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# Build on the current Wi-Fi, hop to the robot's Wi-Fi, push over adb, hop back.
+#
+#   ./deploy            sloth hot-reload, or a full install if anything outside TeamCode code changed
+#   ./deploy sloth      force a Sloth hot-reload (TeamCode only, a few seconds)
+#   ./deploy full       force a full APK install and restart the Robot Controller app
+#   ./deploy log        stream robot logcat until Ctrl-C, then hop back
+#   ./deploy connect    join robot Wi-Fi + adb connect and stay there
+#   ./deploy back       return to the Wi-Fi you were on before `connect`
+#   ./deploy status     show Wi-Fi / adb state
+#   ./deploy setup      one-time setup (lets the script read the current Wi-Fi name)
+#
+# Settings live in .deploy.local (gitignored), e.g.:
+#   ROBOT_SSID=32294-NEW
+#   ROBOT_PASS=password      # only needed if macOS won't join from the keychain
+#   HOME_SSID=MyHomeWifi     # fallback when the current network name can't be read
+#   HOME_PASS=...
+
+set -uo pipefail
+cd "$(dirname "$0")"
+ROOT=$PWD
+
+ROBOT_SSID=32294-NEW
+ROBOT_PASS=
+HOME_SSID=
+HOME_PASS=
+ROBOT_IP=192.168.43.1
+ROBOT_ADB=$ROBOT_IP:5555
+SLOTH_TIMEOUT=60
+[ -f .deploy.local ] && . ./.deploy.local
+
+IFACE=$(networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2; exit}')
+SDK=$(sed -n 's/^sdk.dir=//p' local.properties 2>/dev/null)
+SDK=${SDK:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}
+ADB=$SDK/platform-tools/adb
+JBR="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+[ -d "$JBR" ] && export JAVA_HOME="$JBR"
+PKG=com.qualcomm.ftcrobotcontroller
+ACTIVITY=org.firstinspires.ftc.robotcontroller.internal.PermissionValidatorWrapper
+APK=TeamCode/build/outputs/apk/debug/TeamCode-debug.apk
+STATE=build/.deploy
+mkdir -p "$STATE"
+LOG=$STATE/last.log
+FULL_HASH_FILE=$STATE/full-hash
+PREV_FILE=$STATE/prev-ssid
+
+c_b=$'\e[1m'; c_g=$'\e[32m'; c_y=$'\e[33m'; c_r=$'\e[31m'; c_0=$'\e[0m'
+T0=$(date +%s)
+say()  { printf '%s[%3ss]%s %s\n' "$c_b" $(( $(date +%s) - T0 )) "$c_0" "$*" | tee -a "$LOG"; }
+warn() { say "${c_y}$*${c_0}"; }
+die()  { say "${c_r}$*${c_0}"; exit 1; }
+
+current_ssid() {
+    ipconfig getsummary "$IFACE" 2>/dev/null | awk -F' : ' '/^ +SSID :/{print $2; exit}'
+}
+wifi_ip() { ifconfig "$IFACE" 2>/dev/null | awk '/inet /{print $2; exit}'; }
+on_robot_net() { [[ "$(wifi_ip)" == 192.168.43.* ]]; }
+online() { curl -s -m 3 -o /dev/null http://captive.apple.com/hotspot-detect.html; }
+usb_robot() { "$ADB" devices 2>/dev/null | awk 'NR>1 && $2=="device" && $1 !~ /:/ {f=1} END{exit !f}'; }
+adb_ready() { "$ADB" devices 2>/dev/null | grep -q "^$ROBOT_ADB[[:space:]]*device"; }
+
+join() { # ssid [pass]
+    local out
+    out=$(networksetup -setairportnetwork "$IFACE" "$1" ${2:+"$2"} 2>&1)
+    [ -n "$out" ] && warn "networksetup: $out"
+    case "$out" in *rror*|*ailed*|*"Could not"*) return 1;; esac
+    return 0
+}
+
+wait_for() { # seconds cmd...
+    local n=$(( $1 * 2 )); shift
+    while (( n-- > 0 )); do "$@" && return 0; sleep 0.5; done
+    return 1
+}
+
+goto_robot() {
+    if on_robot_net; then say "already on robot Wi-Fi"; return 0; fi
+    HOPPED=1
+    PREV=$(current_ssid)
+    [[ -z "$PREV" || "$PREV" == "<redacted>" ]] && PREV=$HOME_SSID
+    printf '%s' "$PREV" > "$PREV_FILE"
+    say "Wi-Fi: ${PREV:-unknown} -> $ROBOT_SSID"
+    if ! join "$ROBOT_SSID" "$ROBOT_PASS"; then
+        HOPPED=; die "robot Wi-Fi $ROBOT_SSID not found or rejected (robot on? ROBOT_PASS in .deploy.local?)"
+    fi
+    if ! wait_for 20 on_robot_net; then
+        [ -z "$ROBOT_PASS" ] && warn "couldn't join from keychain; put ROBOT_PASS=... in .deploy.local"
+        die "not on robot Wi-Fi (is the robot on?)"
+    fi
+    say "on robot Wi-Fi ($(wifi_ip))"
+}
+
+goto_back() {
+    local prev=${PREV-$(cat "$PREV_FILE" 2>/dev/null)}
+    "$ADB" disconnect "$ROBOT_ADB" >/dev/null 2>&1
+    on_robot_net || { rm -f "$PREV_FILE"; return 0; }
+    if [ -n "$prev" ]; then
+        local pass=; [ "$prev" = "$HOME_SSID" ] && pass=$HOME_PASS
+        say "Wi-Fi: -> $prev"
+        join "$prev" "$pass" || true
+    else
+        warn "previous Wi-Fi unknown (run ./deploy setup, or set HOME_SSID); cycling Wi-Fi"
+        networksetup -setairportpower "$IFACE" off; sleep 1; networksetup -setairportpower "$IFACE" on
+    fi
+    if wait_for 30 online; then say "${c_g}back online${c_0}"; rm -f "$PREV_FILE"
+    else warn "still offline after 30s; check Wi-Fi manually"; fi
+}
+
+adb_up() {
+    usb_robot && { say "robot on USB"; return 0; }
+    say "adb connect $ROBOT_ADB"
+    wait_for 15 sh -c "'$ADB' connect '$ROBOT_ADB' >/dev/null 2>&1; '$ADB' devices | grep -q '^$ROBOT_ADB[[:space:]]*device'" \
+        || die "adb can't reach $ROBOT_ADB"
+}
+
+# Things that a Sloth hot-reload can't carry: anything outside TeamCode's Java/Kotlin.
+full_hash() {
+    { find FtcRobotController libs TeamCode/src/main/res TeamCode/src/main/AndroidManifest.xml \
+           TeamCode/src/main/assets -type f 2>/dev/null
+      ls build.gradle build.common.gradle build.dependencies.gradle settings.gradle gradle.properties \
+         TeamCode/build.gradle gradle/wrapper/gradle-wrapper.properties 2>/dev/null
+    } | LC_ALL=C sort | xargs shasum 2>/dev/null | shasum | cut -d' ' -f1
+}
+
+gradle() { ./gradlew --console=plain -q "$@" 2>&1 | grep -vE 'Deprecated Gradle|warning-mode|command_line_warnings|configuration cache|Problems report|^$' | tee -a "$LOG"; return "${PIPESTATUS[0]}"; }
+
+push_full() {
+    say "installing APK ($(du -h "$APK" | cut -f1))"
+    "$ADB" ${SERIAL:+-s "$SERIAL"} install -r -t "$APK" 2>&1 | tail -1 | tee -a "$LOG" | grep -q Success || die "install failed"
+    "$ADB" ${SERIAL:+-s "$SERIAL"} shell am force-stop $PKG
+    "$ADB" ${SERIAL:+-s "$SERIAL"} shell am start -n $PKG/$ACTIVITY >/dev/null
+    printf '%s' "$HASH" > "$FULL_HASH_FILE"
+    say "${c_g}full install done, Robot Controller restarted${c_0}"
+}
+
+push_sloth() {
+    say "sloth deploy"
+    gradle --offline :TeamCode:deploySloth &
+    local pid=$! n=$(( SLOTH_TIMEOUT * 2 ))
+    while kill -0 $pid 2>/dev/null && (( n-- > 0 )); do sleep 0.5; done
+    if kill -0 $pid 2>/dev/null; then
+        pkill -P $pid 2>/dev/null; kill $pid 2>/dev/null
+        warn "sloth timed out (robot app has no Sloth yet?)"
+        return 1
+    fi
+    wait $pid || return 1
+    [ -f "$FULL_HASH_FILE" ] || printf '%s' "$HASH" > "$FULL_HASH_FILE"
+    say "${c_g}sloth hot-reload done${c_0}"
+}
+
+mode=${1:-auto}
+command -v "$ADB" >/dev/null || [ -x "$ADB" ] || die "adb not found at $ADB"
+"$ADB" start-server >/dev/null 2>&1
+
+case $mode in
+status)
+    s=$(current_ssid); echo "Wi-Fi: ${s:-none} ($(wifi_ip))"
+    [ "$s" = "<redacted>" ] && echo "  (name hidden by macOS: run ./deploy setup)"
+    on_robot_net && echo "  on robot network"
+    "$ADB" devices | sed 1d
+    exit 0;;
+setup)
+    echo "Letting ipconfig show the Wi-Fi name (needs your Mac password once):"
+    sudo ipconfig setverbose 1 && echo "current Wi-Fi: $(current_ssid)"
+    exit 0;;
+back) goto_back; exit 0;;
+auto|sloth|full|log|connect) ;;
+*) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1;;
+esac
+
+: > "$LOG"
+if [ -f "$STATE/lock" ] && kill -0 "$(cat "$STATE/lock")" 2>/dev/null; then die "another deploy is running"; fi
+echo $$ > "$STATE/lock"
+HOPPED=
+cleanup() { [ -n "$HOPPED" ] && goto_back; rm -f "$STATE/lock"; }
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+HASH=$(full_hash)
+if [ "$mode" = auto ]; then
+    if [ "$HASH" = "$(cat "$FULL_HASH_FILE" 2>/dev/null)" ]; then mode=sloth
+    elif [ -f "$FULL_HASH_FILE" ]; then mode=full; say "non-TeamCode files changed -> full install"
+    else mode=sloth; fi   # never deployed from here: try sloth, fall back to full
+fi
+
+# 1. Build while we still have internet.
+case $mode in
+sloth) say "building sloth jar"; gradle :TeamCode:dexSloth :TeamCode:assembleSloth || die "build failed";;
+full)  say "building APK";       gradle :TeamCode:assembleDebug || die "build failed";;
+esac
+
+# 2. Get to the robot.
+SERIAL=
+if usb_robot; then
+    SERIAL=$("$ADB" devices | awk 'NR>1 && $2=="device" && $1 !~ /:/ {print $1; exit}')
+    say "robot on USB ($SERIAL), skipping Wi-Fi"
+else
+    goto_robot
+    adb_up
+    SERIAL=$ROBOT_ADB
+fi
+
+# 3. Push.
+case $mode in
+sloth) push_sloth || { warn "falling back to full install"; say "building APK (offline)"
+                      gradle --offline :TeamCode:assembleDebug || die "build failed"; push_full; } ;;
+full)  push_full ;;
+log)   say "logcat (Ctrl-C to stop)"; "$ADB" -s "$SERIAL" logcat -v time -T 1 "*:I" | grep --line-buffered -vE 'chatty|BufferQueue|Wifi|wpa_supplicant';;
+connect) HOPPED=; say "connected; run ./deploy back when done"; exit 0;;
+esac
+
+say "done in $(( $(date +%s) - T0 ))s"

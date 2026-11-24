@@ -23,14 +23,15 @@ import java.util.List;
  *   dpad up/down     select device
  *
  * MOTORS page: every motor in the config, one at a time.
- *   Every motor starts FORWARD. Direction changes persist between pages for this run.
+ *   Drive motors start with the directions in Constants, everything else FORWARD.
+ *   Direction changes persist between pages for this run.
  *   left stick Y     run the selected motor (up = positive power)
  *   B (hold)         run the selected motor at +TEST_POWER
  *   A                flip the selected motor's direction (only for this run)
  *   Y                reset encoder
  *
- * DRIVE CHECK page: uses the same motor directions as the MOTORS page.
- *   X (hold)         all four wheels at +TEST_POWER
+ * DRIVE CHECK page: checks the directions in Constants.
+ *   X (hold)         all four wheels at +TEST_POWER: every wheel should roll the robot forward
  *   dpad up/down     pick one wheel; B (hold) runs just that wheel at +TEST_POWER
  *   A                flip the selected wheel's direction (only for this run)
  *   Watch the physical wheels to establish forward; encoder sign cannot establish it.
@@ -75,9 +76,15 @@ public class DebugTeleOp extends LinearOpMode {
         String[] driveNames = {
                 config.frontLeftName.get(), config.backLeftName.get(),
                 config.frontRightName.get(), config.backRightName.get()};
+        DcMotorSimple.Direction[] driveDirections = {
+                config.frontLeftDirection.get(), config.backLeftDirection.get(),
+                config.frontRightDirection.get(), config.backRightDirection.get()};
         DcMotorEx[] drive = new DcMotorEx[4];
         for (int i = 0; i < 4; i++) {
             drive[i] = hardwareMap.tryGet(DcMotorEx.class, driveNames[i]);
+            if (drive[i] != null) {
+                drive[i].setDirection(driveDirections[i]);
+            }
         }
 
         Page page = Page.MOTORS;

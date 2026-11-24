@@ -3,25 +3,34 @@ package org.firstinspires.ftc.teamcode.opmodes;
 import com.pedropathing.math.Pose;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
-/**
- * Legal wall start, three individual rear shots into the initially raised CELL, then PARK.
- * The CELL starts with three NECTAR (manual10.3.1); three POLLEN can tip it. Retain the
- * fourth preload rather than fire it at the now-lowered CELL. No automatic reload is claimed.
- * Timed transfer pulses require hardware feed-time tuning; see RearLauncher.FEED_SECONDS.
+/*
+ * Drive to the launch spot, fire three preloads one at a time into the raised audience
+ * CELL, wait for the HIVE to settle, then park. The fourth preload stays aboard: the CELL
+ * starts with three NECTAR, so three POLLEN can tip it and a fourth would land in the
+ * lowered CELL. Shooting is skipped if the robot didn't reach the launch pose or has no
+ * transfer motor; it still parks.
  */
 @Autonomous(name = "Launch Park Auto", group = "BIOBUZZ", preselectTeleOp = "Main TeleOp")
 public class LaunchParkAuto extends BiobuzzAuto {
-    // Team estimate for a loaded single-ball rear shooter. Match RearLauncher's recovery.
-    public static double SHOT_INTERVAL_SECONDS = 0.9;
-    public static double HIVE_SETTLE_SECONDS = 1.0;
 
-    @Override protected Pose startPose() { return paths.audienceStart; }
+    public static int SHOTS = 3;
+    // Counted from the last shot: the pulse, then time for the HIVE to stop moving.
+    public static double HIVE_SETTLE_SECONDS = 1.9;
 
-    @Override protected String placement() {
+    private int shotsFired;
+
+    @Override
+    protected Pose startPose() {
+        return paths.audienceStart;
+    }
+
+    @Override
+    protected String placement() {
         return "FRONT on the audience wall, REAR outtake toward the raised audience CELL";
     }
 
-    @Override protected void run() {
+    @Override
+    protected void run() {
         switch (step) {
             case 0:
                 follower.follow(paths.startToLaunch);
@@ -29,47 +38,29 @@ public class LaunchParkAuto extends BiobuzzAuto {
                 break;
             case 1:
                 if (pathDone()) {
-                    if (!atPose(paths.launch)) {
-                        telemetry.addLine("Launch path did not settle: stopping without firing");
-                        requestOpModeStop();
-                        break;
-                    }
                     follower.hold(paths.launch);
-                    next();
+                    // Skip straight to parking if there's nothing to shoot with or we're off target.
+                    step = robot.launcher.available() && atPose(paths.launch) ? 2 : 3;
+                    stepTimer.reset();
                 }
                 break;
             case 2:
-                if (robot.launcher.shootOne()) next();
-                else if (!robot.launcher.available()) { step = 8; stepTimer.reset(); }
+                if (shotsFired < SHOTS) {
+                    if (robot.launcher.shootOne()) {
+                        shotsFired++;
+                    }
+                } else {
+                    next();
+                }
                 break;
             case 3:
-                if (stepTimer.seconds() >= SHOT_INTERVAL_SECONDS) next();
-                break;
-            case 4:
-                if (robot.launcher.shootOne()) next();
-                break;
-            case 5:
-                if (stepTimer.seconds() >= SHOT_INTERVAL_SECONDS) next();
-                break;
-            case 6:
-                if (robot.launcher.shootOne()) next();
-                break;
-            case 7:
-                if (stepTimer.seconds() >= SHOT_INTERVAL_SECONDS) next();
-                break;
-            case 8:
-                if (stepTimer.seconds() >= HIVE_SETTLE_SECONDS) next();
-                break;
-            case 9:
-                robot.launcher.stop();
-                follower.follow(paths.launchToPark);
-                next();
-                break;
-            case 10:
-                if (pathDone()) next();
+                if (stepTimer.seconds() >= HIVE_SETTLE_SECONDS) {
+                    robot.launcher.stop();
+                    follower.follow(paths.launchToPark);
+                    next();
+                }
                 break;
             default:
-                robot.launcher.stop();
                 break;
         }
     }

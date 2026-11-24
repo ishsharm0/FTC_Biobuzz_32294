@@ -9,43 +9,40 @@ import org.firstinspires.ftc.teamcode.Field.Alliance;
 import org.firstinspires.ftc.teamcode.Robot;
 
 /*
- * Shared by the match autos (ParkAuto, LaunchParkAuto). Each of those is one routine:
- * where the robot starts, and a switch that runs one step per loop.
+ * Base for the Pedro match autos. A subclass gives the start pose and a step switch
+ * that runs once per loop.
  *
- * After INIT, on gamepad1:
+ * During INIT, on gamepad1:
  *   X / B            blue / red alliance
- *   dpad up / down   start delay, for staying out of a partner's way
- * The telemetry says where to put the robot.
- *
- * Blue is red turned half way round the field, so the robot makes the same moves on
- * either alliance. The alliance sets the pose on the field, which TeleOp carries on from.
+ *   dpad up / down   start delay, to stay out of a partner's way
+ * Telemetry says where to place the robot.
  */
 public abstract class BiobuzzAuto extends OpMode {
 
-    // Give up on a path that hasn't settled by now, so a bad tune can't eat the whole auto.
+    // Give up on a path that hasn't finished by now, so a bad tune can't eat the auto.
     public static double PATH_TIMEOUT_SECONDS = 6.0;
     public static double MAX_DELAY_SECONDS = 10.0;
     public static double POSITION_TOLERANCE_INCHES = 2.0;
     public static double HEADING_TOLERANCE_DEGREES = 5.0;
-    private final ElapsedTime autoTimer = new ElapsedTime();
+    // Stop everything just before the 30 s AUTO period ends.
+    private static final double END_SECONDS = 29.0;
 
     protected final ElapsedTime stepTimer = new ElapsedTime();
+    private final ElapsedTime autoTimer = new ElapsedTime();
     protected Robot robot;
     protected Follower follower;
     protected AutoPaths paths;
     protected int step;
 
     private Alliance alliance = Robot.alliance;
-    private double delaySeconds = 0.0;
+    private double delaySeconds;
     private boolean delayDone;
 
-    /** Where the robot is placed, from the paths built for the chosen alliance. */
     protected abstract Pose startPose();
 
-    /** The same thing in words, for the drive team. */
+    /** Where to put the robot, in words for the drive team. */
     protected abstract String placement();
 
-    /** Runs the current step. Called once per loop after the start delay. */
     protected abstract void run();
 
     @Override
@@ -57,8 +54,17 @@ public abstract class BiobuzzAuto extends OpMode {
 
     @Override
     public void init_loop() {
-        if (gamepad1.xWasPressed() || gamepad1.bWasPressed()) {
-            alliance = gamepad1.x ? Alliance.BLUE : Alliance.RED;
+        if (follower == null) {
+            telemetry.addLine("No Pinpoint in the config: this auto can't run. Use Timed Leave.");
+            telemetry.update();
+            return;
+        }
+        if (gamepad1.xWasPressed()) {
+            alliance = Alliance.BLUE;
+            paths = new AutoPaths(alliance);
+        }
+        if (gamepad1.bWasPressed()) {
+            alliance = Alliance.RED;
             paths = new AutoPaths(alliance);
         }
         if (gamepad1.dpadUpWasPressed()) {
@@ -72,37 +78,36 @@ public abstract class BiobuzzAuto extends OpMode {
         telemetry.addData("Alliance (X blue, B red)", alliance);
         telemetry.addData("Delay (dpad up/down)", "%.0f s", delaySeconds);
         telemetry.addData("Place", placement());
-        telemetry.addData("Start", "x %.1f  y %.1f  h %.0f°",
-                start.x(), start.y(), Math.toDegrees(start.heading()));
+        telemetry.addData("Start", "x %.1f  y %.1f  h %.0f°", start.x(), start.y(), Math.toDegrees(start.heading()));
         telemetry.update();
     }
 
     @Override
     public void start() {
+        if (follower == null) {
+            requestOpModeStop();
+            return;
+        }
         Robot.alliance = alliance;
         follower.setPose(startPose());
         autoTimer.reset();
-        step = 0;
-        delayDone = false;
         stepTimer.reset();
     }
 
     @Override
     public void loop() {
-        // Leave a margin before the official30s AUTO boundary. No powered transition motion.
-        if (autoTimer.seconds() >= 29.0) {
+        if (follower == null || autoTimer.seconds() >= END_SECONDS) {
             robot.stop();
             requestOpModeStop();
             return;
         }
         robot.update();
 
-        if (!delayDone) {
-            if (stepTimer.seconds() >= delaySeconds) {
-                delayDone = true;
-                stepTimer.reset();
-            }
-        } else {
+        if (!delayDone && stepTimer.seconds() >= delaySeconds) {
+            delayDone = true;
+            stepTimer.reset();
+        }
+        if (delayDone) {
             run();
         }
 
@@ -113,23 +118,20 @@ public abstract class BiobuzzAuto extends OpMode {
 
     @Override
     public void stop() {
-        if (robot != null) {
-            robot.stop();
-        }
+        robot.stop();
     }
 
-    /** Moves on to the next step. */
     protected void next() {
         step++;
         stepTimer.reset();
     }
 
-    /** True once the path started in the step before has finished, or has taken too long. */
+    /** True once the current path has finished or timed out. */
     protected boolean pathDone() {
         return !follower.following() || stepTimer.seconds() >= PATH_TIMEOUT_SECONDS;
     }
 
-    /** Do not fire after a timeout unless odometry actually reached the launch pose. */
+    /** True when odometry says the robot is within tolerance of the target. */
     protected boolean atPose(Pose target) {
         Pose current = follower.pose();
         double headingError = Math.atan2(Math.sin(current.heading() - target.heading()),
@@ -137,5 +139,4 @@ public abstract class BiobuzzAuto extends OpMode {
         return Math.hypot(current.x() - target.x(), current.y() - target.y()) <= POSITION_TOLERANCE_INCHES
                 && Math.abs(Math.toDegrees(headingError)) <= HEADING_TOLERANCE_DEGREES;
     }
-
 }

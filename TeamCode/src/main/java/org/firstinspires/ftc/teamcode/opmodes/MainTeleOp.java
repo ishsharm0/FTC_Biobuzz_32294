@@ -3,111 +3,53 @@ package org.firstinspires.ftc.teamcode.opmodes;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
-import org.firstinspires.ftc.teamcode.Field;
 import org.firstinspires.ftc.teamcode.Robot;
-import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
 import org.firstinspires.ftc.teamcode.subsystems.Vision;
 
 /*
+ * Robot-centric: pushing the left stick up always drives toward the robot's front.
+ *
  * gamepad1
  *   left stick      drive / strafe
  *   right stick X   turn
- *   right bumper    slow mode (hold)
- *   left bumper     vision aim mode (hold) — enables camera while held, disables on release
- *   back            toggle field-centric
- *   start           reset heading (field-centric forward = where the robot faces now)
- *   dpad up         toggle velocity drive (steady wheel speed) vs follower drive
- *
- * Vision CPU strategy:
- *   Camera stream is stopped on match start to save CPU.
- *   Holding left bumper resumes the stream and enables the AprilTag processor.
- *   Releasing left bumper disables the processor.
- *   The stream stays running while left bumper is held, and is stopped again
- *   1 second after the bumper is released to avoid thrashing start/stop rapidly.
- *
- * The alliance comes from whichever auto ran last (Red Auto / Blue Auto). Red if none did.
+ *   left trigger    slow mode (hold)
+ *   right bumper    intake in (hold)
+ *   left bumper     intake out (hold)
+ *   A               feed the rear launcher (hold)
+ *   Y               show the HIVE target from the camera (hold)
  */
 @TeleOp(name = "Main TeleOp", group = "BIOBUZZ")
 public class MainTeleOp extends LinearOpMode {
 
-    // How long after releasing the aim button before the stream is fully stopped (ms).
-    // Keeps it warm briefly so quick re-presses don't pay the resume cost.
-    private static final long STREAM_IDLE_TIMEOUT_MS = 1000;
-
     @Override
     public void runOpMode() {
         Robot robot = new Robot(hardwareMap);
-        robot.drivetrain.startTeleOp(Robot.lastPose);
-        robot.drivetrain.setDriverHeading(Robot.alliance.driverHeading());
-        Vision.Alliance alliance = Robot.alliance == Field.Alliance.BLUE
-                ? Vision.Alliance.BLUE
-                : Vision.Alliance.RED;
 
-        // Vision starts with stream off by default — no stopStream() needed here.
-        telemetry.addData("Alliance", alliance);
-        telemetry.addLine(robot.vision != null ? "Ready  |  hold LB to aim at HIVE" : "Ready  |  no camera in config");
+        telemetry.addData("Alliance", Robot.alliance);
+        telemetry.addData("Camera", robot.vision == null ? "not in config" : "ready, hold Y to aim");
         telemetry.update();
 
         waitForStart();
 
-        long streamIdleStart = -1; // timestamp when aim button was last released
-
         while (opModeIsActive()) {
-
-            // ── Drivetrain controls ───────────────────────────────────────────
-            if (gamepad1.backWasPressed()) {
-                robot.drivetrain.setFieldCentric(!robot.drivetrain.isFieldCentric());
-            }
-            if (gamepad1.startWasPressed()) {
-                robot.drivetrain.resetHeading();
-            }
-            if (gamepad1.dpadUpWasPressed()) {
-                robot.drivetrain.setMode(robot.drivetrain.getMode() == Drivetrain.Mode.PEDRO
-                        ? Drivetrain.Mode.VELOCITY
-                        : Drivetrain.Mode.PEDRO);
-            }
-
-            robot.drivetrain.setSlowMode(gamepad1.right_bumper);
             robot.drivetrain.drive(
                     -gamepad1.left_stick_y,
                     -gamepad1.left_stick_x,
-                    -gamepad1.right_stick_x);
+                    -gamepad1.right_stick_x,
+                    gamepad1.left_trigger > 0.5);
 
-            // ── Vision aim mode (left bumper) ─────────────────────────────────
-            if (robot.vision == null) {
-                // No camera configured: drive only.
-            } else if (gamepad1.left_bumper) {
-                // Button held — ensure stream and processor are both on.
-                if (!robot.vision.isStreaming()) {
-                    robot.vision.resumeStream();
-                }
-                robot.vision.enable();
-                streamIdleStart = -1; // reset idle timer
+            robot.intake.set(gamepad1.right_bumper ? 1 : gamepad1.left_bumper ? -1 : 0);
+            robot.launcher.feed(gamepad1.a);
 
-                Vision.HiveTarget target = robot.vision.getHiveTarget(alliance);
+            if (robot.vision != null) {
+                robot.vision.setActive(gamepad1.y);
+                Vision.Target target = robot.vision.target(Robot.alliance);
                 if (target != null) {
-                    telemetry.addData("HIVE Target", target.toString());
-                    telemetry.addData("In window", target.isInScoringWindow() ? "YES — SHOOT" : "no");
-                } else {
-                    telemetry.addData("HIVE Target", "not found");
-                }
-            } else {
-                // Button released — disable processor immediately to free CPU.
-                if (robot.vision.isEnabled()) {
-                    robot.vision.disable();
-                    streamIdleStart = System.currentTimeMillis();
-                }
-
-                // After idle timeout, stop the stream entirely.
-                if (streamIdleStart > 0
-                        && robot.vision.isStreaming()
-                        && System.currentTimeMillis() - streamIdleStart > STREAM_IDLE_TIMEOUT_MS) {
-                    robot.vision.stopStream();
-                    streamIdleStart = -1;
+                    telemetry.addData("HIVE", "%s  %.0f in  %.0f°  %s", target.name, target.range, target.bearing,
+                            target.inScoringRange() ? "IN RANGE" : "");
                 }
             }
 
-            // ── Update and telemetry ──────────────────────────────────────────
             robot.update();
             robot.addTelemetry(telemetry);
             telemetry.update();
