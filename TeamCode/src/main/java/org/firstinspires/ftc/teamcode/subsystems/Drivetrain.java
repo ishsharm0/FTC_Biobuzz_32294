@@ -116,10 +116,10 @@ public class Drivetrain implements Subsystem {
             f = rotatedF;
         }
 
-        double lf = f - s - t;
-        double lr = f + s - t;
-        double rf = f + s + t;
-        double rr = f - s + t;
+        double lf = f + s - t;
+        double lr = f - s - t;
+        double rf = f - s + t;
+        double rr = f + s + t;
 
         double max = Math.max(1.0, Math.max(Math.max(Math.abs(lf), Math.abs(lr)),
                 Math.max(Math.abs(rf), Math.abs(rr))));
