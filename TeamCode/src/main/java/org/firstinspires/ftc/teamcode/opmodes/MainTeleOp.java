@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode.opmodes;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
+import org.firstinspires.ftc.teamcode.Field;
 import org.firstinspires.ftc.teamcode.Robot;
 import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
 import org.firstinspires.ftc.teamcode.subsystems.Vision;
@@ -24,13 +25,10 @@ import org.firstinspires.ftc.teamcode.subsystems.Vision;
  *   The stream stays running while left bumper is held, and is stopped again
  *   1 second after the bumper is released to avoid thrashing start/stop rapidly.
  *
- * IMPORTANT: Change ALLIANCE below to match your alliance before the match.
+ * The alliance comes from whichever auto ran last (Red Auto / Blue Auto). Red if none did.
  */
 @TeleOp(name = "Main TeleOp", group = "BIOBUZZ")
 public class MainTeleOp extends LinearOpMode {
-
-    // ── Set this to your alliance before the match ────────────────────────────
-    private static final Vision.Alliance ALLIANCE = Vision.Alliance.RED;
 
     // How long after releasing the aim button before the stream is fully stopped (ms).
     // Keeps it warm briefly so quick re-presses don't pay the resume cost.
@@ -40,9 +38,14 @@ public class MainTeleOp extends LinearOpMode {
     public void runOpMode() {
         Robot robot = new Robot(hardwareMap);
         robot.drivetrain.startTeleOp(Robot.lastPose);
+        robot.drivetrain.setDriverHeading(Robot.alliance.driverHeading());
+        Vision.Alliance alliance = Robot.alliance == Field.Alliance.BLUE
+                ? Vision.Alliance.BLUE
+                : Vision.Alliance.RED;
 
         // Vision starts with stream off by default — no stopStream() needed here.
-        telemetry.addLine("Ready  |  hold LB to aim at HIVE");
+        telemetry.addData("Alliance", alliance);
+        telemetry.addLine(robot.vision != null ? "Ready  |  hold LB to aim at HIVE" : "Ready  |  no camera in config");
         telemetry.update();
 
         waitForStart();
@@ -71,7 +74,9 @@ public class MainTeleOp extends LinearOpMode {
                     -gamepad1.right_stick_x);
 
             // ── Vision aim mode (left bumper) ─────────────────────────────────
-            if (gamepad1.left_bumper) {
+            if (robot.vision == null) {
+                // No camera configured: drive only.
+            } else if (gamepad1.left_bumper) {
                 // Button held — ensure stream and processor are both on.
                 if (!robot.vision.isStreaming()) {
                     robot.vision.resumeStream();
@@ -79,7 +84,7 @@ public class MainTeleOp extends LinearOpMode {
                 robot.vision.enable();
                 streamIdleStart = -1; // reset idle timer
 
-                Vision.HiveTarget target = robot.vision.getHiveTarget(ALLIANCE);
+                Vision.HiveTarget target = robot.vision.getHiveTarget(alliance);
                 if (target != null) {
                     telemetry.addData("HIVE Target", target.toString());
                     telemetry.addData("In window", target.isInScoringWindow() ? "YES — SHOOT" : "no");

@@ -55,6 +55,8 @@ public class Drivetrain implements Subsystem {
 
     private Mode mode = Mode.PEDRO;
     private boolean fieldCentric = false;
+    // Field heading that counts as "away from the driver" in field-centric.
+    private double driverHeading = 0.0;
     private double scale = 1.0;
 
     private long lastCommandNs = 0L;
@@ -93,7 +95,7 @@ public class Drivetrain implements Subsystem {
         }
         if (mode == Mode.PEDRO) {
             DrivePowers powers = new DrivePowers(forward * scale, strafe * scale, turn * scale);
-            follower.manual(fieldCentric ? ManualDrive.fieldCentric(powers, follower.pose().heading()) : powers);
+            follower.manual(fieldCentric ? ManualDrive.fieldCentric(powers, follower.pose().heading() - driverHeading) : powers);
             return;
         }
 
@@ -109,7 +111,7 @@ public class Drivetrain implements Subsystem {
         lastTurn = t;
 
         if (fieldCentric) {
-            double heading = follower.pose().heading();
+            double heading = follower.pose().heading() - driverHeading;
             double cos = Math.cos(-heading), sin = Math.sin(-heading);
             double rotatedF = f * cos - s * sin;
             s = f * sin + s * cos;
@@ -183,9 +185,14 @@ public class Drivetrain implements Subsystem {
         this.fieldCentric = fieldCentric;
     }
 
-    /** Makes the robot's current facing "forward" for field-centric driving. */
+    /** Makes the robot's current facing "forward" for field-centric driving. The pose is left alone. */
     public void resetHeading() {
-        follower.setHeading(0);
+        driverHeading = follower.pose().heading();
+    }
+
+    /** Field heading the drivers face: 0 from the red alliance area, 180 degrees from blue. */
+    public void setDriverHeading(double radians) {
+        driverHeading = radians;
     }
 
     public Pose getPose() {

@@ -15,9 +15,8 @@ import static com.pedropathing.api.Paths.line;
  * Each step starts a path (or a mechanism action) and moves on once it's done.
  * Poses are in inches/radians on the Pedro field (0..144).
  */
-@Autonomous(name = "Auto Template", group = "BIOBUZZ")
-public class
-AutoTemplate extends OpMode {
+@Autonomous(name = "Auto Template", group = "BIOBUZZ", preselectTeleOp = "Main TeleOp")
+public class AutoTemplate extends OpMode {
 
     private final Pose startPose = new Pose(56, 8, Math.toRadians(90));
     private final Pose parkPose = new Pose(56, 36, Math.toRadians(90));
@@ -38,8 +37,12 @@ AutoTemplate extends OpMode {
         // Wait for the camera to start streaming.
         // During init the stream runs so we can confirm camera health on telemetry.
         // It will be stopped before the match starts to reclaim CPU.
-        robot.vision.waitUntilReady(telemetry);
-        telemetry.addData("Vision", robot.vision.isReady() ? "Camera ready" : "Camera timeout — check connection");
+        if (robot.vision != null) {
+            robot.vision.waitUntilReady(telemetry);
+            telemetry.addData("Vision", robot.vision.isReady() ? "Camera ready" : "Camera timeout — check connection");
+        } else {
+            telemetry.addData("Vision", "no camera in config");
+        }
         telemetry.update();
     }
 
@@ -56,7 +59,9 @@ AutoTemplate extends OpMode {
         // Stream is already off (Vision starts with stream stopped).
         // stopStream() during init_loop was already called after waitUntilReady.
         // Drivetrain and odometry get full CPU from the first loop iteration.
-        robot.vision.stopStream(); // ensure off regardless of init state
+        if (robot.vision != null) {
+            robot.vision.stopStream(); // ensure off regardless of init state
+        }
         step = 0;
     }
 
