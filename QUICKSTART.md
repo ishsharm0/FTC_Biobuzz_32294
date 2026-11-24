@@ -6,7 +6,7 @@
   It also brings the Java the build uses; no separate JDK needed.
 - [Git](https://git-scm.com/downloads) (macOS: `xcode-select --install`).
 
-Clone `https://github.com/ishsharm0/FTC_Biobuzz_32294.git`, open it in Android Studio and let Gradle sync.
+Clone `https://github.com/ishsharm0/FTC_Biobuzz_32294.git` (work goes on `main`), open it in Android Studio and let Gradle sync.
 **Build → Make Project** should end in `BUILD SUCCESSFUL`. If Android Studio offers to upgrade Gradle
 or the Android Gradle plugin, say no.
 
@@ -53,7 +53,7 @@ Names in the Driver Station's active config must match exactly:
 | **Launch Park Auto** | Pedro: front on the audience wall, three single shots into the raised CELL, then park |
 | **Timed Leave** | no odometry: drives forward for `DRIVE_SECONDS`. Use when the Pinpoint isn't working |
 | **DEBUG** | every motor and servo one at a time; DRIVE CHECK page verifies the drive motor directions |
-| **Vision Test** | camera and AprilTag check |
+| **AprilTag Demo** | live AprilTag detection: distance and angles to every tag, camera tuning, hold LB to turn and face the closest tag. Watch it on the Driver Station: during INIT, menu → Camera Stream |
 
 In the Pedro autos, during INIT on gamepad1: X / B picks blue / red, dpad up/down sets a start delay.
 Telemetry says where to place the robot.
